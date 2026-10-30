@@ -1,0 +1,24 @@
+# Local source datasets and generated bulk artifacts: never commit data dumps
+/data/raw/
+/data/processed/
+/runs/
+/outputs/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Model binaries are ignored by default; publish individually only after review
+*.joblib
+*.pkl
+
+# Local IDE / system generated files
+.DS_Store
+Thumbs.db
