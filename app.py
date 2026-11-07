@@ -9,7 +9,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-
+import os
 import pandas as pd
 import streamlit as st
 
@@ -24,7 +24,7 @@ def run_command(args: list[str], timeout: int) -> subprocess.CompletedProcess[st
     try:
         return subprocess.run([sys.executable, *args], cwd=ROOT,
                               capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=timeout, check=False)
+                              errors="replace", timeout=timeout, check=False,env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
     except subprocess.TimeoutExpired:
         st.error("Execution exceeded the safety time limit. Check the newest run manifest before starting anything else.")
     except OSError as exc:
