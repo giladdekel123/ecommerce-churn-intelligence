@@ -1,0 +1,41 @@
+{
+  "policy_id": "ecommerce_churn_handoff_production_candidate",
+  "policy_version": "0.1.0-proposed",
+  "status": "PROPOSED_NOT_APPROVED",
+  "formally_approved": false,
+  "authorizes_crew2_training": false,
+  "target_column": "Churn",
+  "identifier_column": "CustomerID",
+  "required_columns": [
+    "CustomerID", "Churn", "Tenure", "PreferredLoginDevice", "CityTier",
+    "WarehouseToHome", "PreferredPaymentMode", "Gender", "HourSpendOnApp",
+    "NumberOfDeviceRegistered", "PreferedOrderCat", "SatisfactionScore",
+    "MaritalStatus", "NumberOfAddress", "Complain", "OrderAmountHikeFromlastYear",
+    "CouponUsed", "OrderCount", "DaySinceLastOrder", "CashbackAmount"
+  ],
+  "baseline_constraints": {
+    "CustomerID": {"required": true, "nullable": false, "unique": true, "role": "identifier"},
+    "Churn": {"required": true, "nullable": false, "allowed_values": [0, 1], "role": "target"},
+    "no_silent_alias_mapping": true,
+    "no_silent_imputation": true,
+    "no_silent_row_drop": true,
+    "no_silent_numeric_clipping": true,
+    "preserve_source_column_names": true
+  },
+  "proposed_nullable_columns": [
+    "Tenure", "WarehouseToHome", "HourSpendOnApp", "OrderAmountHikeFromlastYear",
+    "CouponUsed", "OrderCount", "DaySinceLastOrder"
+  ],
+  "proposed_numeric_constraints_pending_approval": {
+    "Complain": {"allowed_values": [0, 1]},
+    "SatisfactionScore": {"integer_between_inclusive": [1, 5]},
+    "CityTier": {"observed_values": [1, 2, 3]},
+    "WarehouseToHome": {"nonnegative_when_present": true, "upper_bound": null}
+  },
+  "category_alias_mapping_status": "UNAPPROVED_NONE_APPLIED",
+  "units_status": "UNVERIFIED_DO_NOT_INFER",
+  "model_input_columns_status": "UNAPPROVED",
+  "required_training_preprocessing": "Fit imputation, encoding, and scaling only on training folds, after splitting",
+  "validation_policy": "FAIL_CLOSED_UNTIL_EXPLICIT_APPROVAL_AND_NEW_PRODUCTION_GATE",
+  "instructor_semantic_demo": "Synthetic months-to-years fixture, separate from production workbook"
+}

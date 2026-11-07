@@ -1,0 +1,265 @@
+{
+  "policy_id": "ecommerce_churn_handoff_production_v1",
+  "policy_version": "1.0.0",
+  "status": "APPROVED",
+  "formally_approved": true,
+  "approved_by": "Project owner — explicit approval of conservative 15-predictor policy in conversation",
+  "approval_date": "2026-11-07",
+  "approval_scope": "Course prototype on pinned E Comm dataset; does not establish units, causal findings, or future prediction horizon",
+  "authorizes_crew2_training": false,
+  "required_columns": [
+    "CustomerID",
+    "Churn",
+    "Tenure",
+    "PreferredLoginDevice",
+    "CityTier",
+    "WarehouseToHome",
+    "PreferredPaymentMode",
+    "Gender",
+    "HourSpendOnApp",
+    "NumberOfDeviceRegistered",
+    "PreferedOrderCat",
+    "SatisfactionScore",
+    "MaritalStatus",
+    "NumberOfAddress",
+    "Complain",
+    "OrderAmountHikeFromlastYear",
+    "CouponUsed",
+    "OrderCount",
+    "DaySinceLastOrder",
+    "CashbackAmount"
+  ],
+  "columns": {
+    "CustomerID": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "identifier",
+      "unique": true
+    },
+    "Churn": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "target",
+      "allowed_values": [
+        0,
+        1
+      ]
+    },
+    "Tenure": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature",
+      "min": 0
+    },
+    "PreferredLoginDevice": {
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        "Computer",
+        "Mobile Phone",
+        "Phone"
+      ]
+    },
+    "CityTier": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        1,
+        2,
+        3
+      ]
+    },
+    "WarehouseToHome": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature",
+      "min": 0
+    },
+    "PreferredPaymentMode": {
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        "CC",
+        "COD",
+        "Cash on Delivery",
+        "Credit Card",
+        "Debit Card",
+        "E wallet",
+        "UPI"
+      ]
+    },
+    "Gender": {
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        "Female",
+        "Male"
+      ]
+    },
+    "HourSpendOnApp": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature",
+      "min": 0
+    },
+    "NumberOfDeviceRegistered": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "min": 0
+    },
+    "PreferedOrderCat": {
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        "Fashion",
+        "Grocery",
+        "Laptop & Accessory",
+        "Mobile",
+        "Mobile Phone",
+        "Others"
+      ]
+    },
+    "SatisfactionScore": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "min": 1,
+      "max": 5
+    },
+    "MaritalStatus": {
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        "Divorced",
+        "Married",
+        "Single"
+      ]
+    },
+    "NumberOfAddress": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "min": 0
+    },
+    "Complain": {
+      "type": "integer",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "allowed_values": [
+        0,
+        1
+      ]
+    },
+    "OrderAmountHikeFromlastYear": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature"
+    },
+    "CouponUsed": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature",
+      "min": 0
+    },
+    "OrderCount": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature",
+      "min": 0
+    },
+    "DaySinceLastOrder": {
+      "type": "number",
+      "required": true,
+      "nullable": true,
+      "role": "feature",
+      "min": 0
+    },
+    "CashbackAmount": {
+      "type": "number",
+      "required": true,
+      "nullable": false,
+      "role": "feature",
+      "min": 0
+    }
+  },
+  "model_input_columns": [
+    "Tenure",
+    "PreferredLoginDevice",
+    "WarehouseToHome",
+    "PreferredPaymentMode",
+    "HourSpendOnApp",
+    "NumberOfDeviceRegistered",
+    "PreferedOrderCat",
+    "SatisfactionScore",
+    "NumberOfAddress",
+    "Complain",
+    "OrderAmountHikeFromlastYear",
+    "CouponUsed",
+    "OrderCount",
+    "DaySinceLastOrder",
+    "CashbackAmount"
+  ],
+  "excluded_from_model_inputs": [
+    "CustomerID",
+    "Churn",
+    "Gender",
+    "MaritalStatus",
+    "CityTier"
+  ],
+  "cleaning_transformation_version": "0.1.0-conservative",
+  "source_sha256": "db70f1e34bc5326887ea3fb3d2a0854e82c577d55ef3a76fdfb25328631bd44d",
+  "identifier_column": "CustomerID",
+  "target_column": "Churn",
+  "unit_assumptions": {
+    "Tenure": "unknown_not_independently_verified",
+    "WarehouseToHome": "unknown_not_independently_verified",
+    "HourSpendOnApp": "unknown_not_independently_verified",
+    "NumberOfDeviceRegistered": "unknown_not_independently_verified",
+    "NumberOfAddress": "unknown_not_independently_verified",
+    "OrderAmountHikeFromlastYear": "unknown_not_independently_verified",
+    "CouponUsed": "unknown_not_independently_verified",
+    "OrderCount": "unknown_not_independently_verified",
+    "DaySinceLastOrder": "unknown_not_independently_verified",
+    "CashbackAmount": "unknown_not_independently_verified"
+  },
+  "missing_value_strategy": "Preserve in Crew 1; fit imputation inside Crew 2 training folds only",
+  "category_alias_mappings": {},
+  "raw_category_policy": "Preserve distinct labels without mapping; string allowlists pin observed snapshot labels, not synonyms",
+  "unknown_units_policy": "Do not guess; no unit transformation authorized",
+  "numeric_range_policy": "Only semantic lower bounds (nonnegative where meaningful) and score range 1..5; do not derive incidental upper bounds",
+  "required_training_preprocessing": "Split first; fit imputation, one-hot encoding and any scaling only in training folds",
+  "known_limitations": [
+    "Churn is a historical flag with no documented forward prediction horizon",
+    "Some measurement units are not independently verified",
+    "Historical Churn flag lacks a documented future prediction horizon",
+    "Demographic/location fields are retained in data but excluded from modeling",
+    "Case-specific category mappings have not been independently established"
+  ],
+  "semantic_demo": "Separate version-controlled synthetic months-to-years test; do not infer units from Kaggle workbook",
+  "approval_record": "docs/08_PRODUCTION_POLICY_APPROVAL_2026-11-07.md"
+}
