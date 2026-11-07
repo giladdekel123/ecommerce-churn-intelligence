@@ -1,0 +1,24 @@
+{
+  "contract_version": "0.1.0-test",
+  "approved_policy_version": "0.1.0-test",
+  "status": "limited_test_contract",
+  "authorizes_crew2_training": false,
+  "description": "Synthetic, test-only dataset contract for tests/fixtures/valid_clean_data.csv. This is a limited test contract for the first validation-gate slice. It is not a complete production handoff contract and is not authorization for Crew 2 training.",
+  "identifier_column": "CustomerID",
+  "target_column": "Churn",
+  "model_input_columns": [],
+  "columns": {
+    "CustomerID": {
+      "required": true,
+      "nullable": false,
+      "unique": true,
+      "role": "identifier"
+    },
+    "Churn": {
+      "required": true,
+      "nullable": false,
+      "allowed_values": [0, 1],
+      "role": "target"
+    }
+  }
+}
