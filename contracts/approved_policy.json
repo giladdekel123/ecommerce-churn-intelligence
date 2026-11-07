@@ -1,0 +1,89 @@
+{
+  "policy_id": "ecommerce_churn_handoff",
+  "approved_policy_version": "0.1.0-test",
+  "status": "initial_test_policy",
+  "not_complete_production_contract": true,
+  "description": "Author-approved, version-controlled policy used by the deterministic validation gate. This file is an initial test policy for the first contract-gate slice. It is not the complete production handoff contract and must not be treated as a full schema for the E Comm worksheet.",
+  "scope_notes": [
+    "Only CustomerID and Churn have blocking rules in this version.",
+    "Remaining source columns are not yet constrained; absence of a rule is not approval of those columns.",
+    "Canonical category mappings, nullability for other fields, numeric ranges, and model_input_columns remain open (T-02, T-03).",
+    "This policy must be updated only by ordinary code review. Crew 1 must not rewrite it to make a generated dataset_contract.json pass."
+  ],
+  "source": {
+    "dataset_name": "Ecommerce Customer Churn Analysis and Prediction",
+    "author": "Ankit Verma",
+    "workbook": "E Commerce Dataset.xlsx",
+    "worksheet": "E Comm",
+    "license": "CC BY-NC-SA 4.0",
+    "kaggle_url": "https://www.kaggle.com/datasets/ankitverma2010/ecommerce-customer-churn-analysis-and-prediction"
+  },
+  "identifier_column": "CustomerID",
+  "target_column": "Churn",
+  "model_input_columns": [],
+  "model_input_columns_note": "Empty on purpose in this test policy. CustomerID and Churn are excluded from model inputs; predictor allowlist is not signed off yet (T-03).",
+  "columns": {
+    "CustomerID": {
+      "required": true,
+      "nullable": false,
+      "unique": true,
+      "role": "identifier",
+      "exclude_from_model_inputs": true,
+      "rationale": "Source identifier on E Comm; records are uniquely keyed by CustomerID (docs/04_DATA_CONTRACT_SPEC.md)."
+    },
+    "Churn": {
+      "required": true,
+      "nullable": false,
+      "allowed_values": [0, 1],
+      "role": "target",
+      "exclude_from_model_inputs": true,
+      "label_meanings": {
+        "0": "recorded non-churn in the historical workbook",
+        "1": "recorded churn in the historical workbook"
+      },
+      "unsupported_claims": [
+        "Churn=1 does not mean abandonment within a documented future time window. Data Dict defines Churn only as Churn Flag."
+      ],
+      "rationale": "Observed source labels and the selected binary classification problem (docs/01_PROJECT_DEFINITION.md, docs/04_DATA_CONTRACT_SPEC.md)."
+    }
+  },
+  "blocking_rules": [
+    {
+      "rule_id": "CID-001",
+      "column": "CustomerID",
+      "check": "column_present",
+      "severity": "blocking"
+    },
+    {
+      "rule_id": "CID-002",
+      "column": "CustomerID",
+      "check": "non_null",
+      "severity": "blocking"
+    },
+    {
+      "rule_id": "CID-003",
+      "column": "CustomerID",
+      "check": "unique",
+      "severity": "blocking"
+    },
+    {
+      "rule_id": "CHURN-001",
+      "column": "Churn",
+      "check": "column_present",
+      "severity": "blocking"
+    },
+    {
+      "rule_id": "CHURN-002",
+      "column": "Churn",
+      "check": "non_null",
+      "severity": "blocking"
+    },
+    {
+      "rule_id": "CHURN-003",
+      "column": "Churn",
+      "check": "allowed_values",
+      "expected": [0, 1],
+      "severity": "blocking"
+    }
+  ]
+}

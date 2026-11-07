@@ -1,6 +1,6 @@
 # 04 — Dataset Contract and Validation Specification
 
-**Status:** Contract design baseline. Exact approved policy and code remain to be implemented.  
+**Status:** The initial test policy (`contracts/approved_policy.json`, version `0.1.0-test`) and the deterministic Python validator (`src/contract_validator.py`) are implemented. Two structural automated tests have succeeded: a valid synthetic handoff returns PASS, and `Churn=7` returns FAIL. The complete production contract and the semantic validator are still pending.  
 **Core instructor output:** `dataset_contract.json` published by Crew 1.
 
 ## 1. Why two related specifications?
@@ -9,7 +9,7 @@ Crew 1 publishes a contract describing its cleaned dataset. However, if Crew 1 w
 
 **Proposed safeguard:** the repository contains a separate **author-approved policy**, maintained by ordinary code review; the gate validates both the generated contract and dataset against that policy. Crew 2 still receives only the generated contract and validated data as its handoff—not Crew 1's raw files or internal process.
 
-A contract cannot prove that every factual value is true. It enforces **specified** rules. Unit-change detection is possible only where a trustworthy unit expectation and a testable check have been established.
+A contract cannot prove that every factual value is true. It enforces **specified** rules. Unit-change detection on the Kaggle workbook is possible only where a trustworthy unit expectation and a testable check have been established. The semantic demonstration in section 6 uses a separate synthetic fixture with an explicitly defined unit. It does not assign a unit to a source column.
 
 ## 2. Verified source profile
 
@@ -70,10 +70,48 @@ Do not mutate/fix data in the gate. Do not invoke Crew 2 on FAIL. Keep the faile
 3. Duplicate `CustomerID`.
 4. Alter the generated contract to relax an approved constraint.
 5. After one successful run, fail a second run and show that no stale model is counted as its result.
+6. Demonstrate at least one semantic error, as required by Jonathan on 4 November 2026. The synthetic months-to-years experiment below is our proposed way to meet that requirement.
 
 **Test harness:** test damage is injected between Crew 1 and gate, or a gate-only mode reads a controlled saved snapshot. Do not silently rerun Crew 1 and heal the corrupted artifact before testing it.
 
-**Unit-change story:** the instructor's fictional `order_value` cents-to-dollars scenario illustrates why contracts need unit assertions. Our chosen workbook does **not** have an `order_value` column, and it does not define the currency for `CashbackAmount`. A claimed dollar-vs-cent demonstration would be unsupported without an additional explicitly governed unit-bearing test fixture.
+**Unit-change story (instructor illustration, not a workbook rule):** the fictional `order_value` cents-to-dollars scenario illustrates why contracts need unit assertions. Our chosen workbook does **not** have an `order_value` column, and it does not define the currency for `CashbackAmount`. A claimed dollar-vs-cent demonstration on `CashbackAmount` would invent a unit. `Tenure` in `E Comm` is also not assumed to be months; section 3 leaves its unit unspecified.
+
+### 6.1 Semantic-error demonstration — proposed synthetic experiment
+
+**Instructor requirement (Jonathan, 4 November 2026).** The project must include at least one semantic-error demonstration in which Crew 2 stops or a warning is raised. Jonathan required that demonstration. He did not prescribe the column, the unit, the reference dataset, or the comparison rule, and he did not require a hard stop in every case.
+
+**Proposed implementation (DESIGN).** Our stricter choice is that a semantic validation failure blocks Crew 2. A warning alone does not satisfy this design. Meet the demonstration with a small synthetic months-to-years fixture. This fixture is not a profile of the Kaggle workbook and is not a substitute for the `Churn=7` test.
+
+| Piece | Role |
+|---|---|
+| Frozen reference | A version-controlled synthetic dataset whose approved policy explicitly defines one numeric column, `SyntheticTenureMonths`, as **months**. The file and its content hash are the trusted reference. |
+| Corrupted handoff | A frozen copy of that reference in which each `SyntheticTenureMonths` value has been divided by 12. The generated contract still declares **months** and does not record an approved months-to-years conversion. |
+| What still looks valid | Both files use a numeric type. Both lie inside the preapproved permitted range of 0–120 months, which contains 12, 24, 36 and 1, 2, 3. |
+| What the gate checks | Declared unit, the permitted range 0–120 months, and the mean and median of `SyntheticTenureMonths` against the frozen reference. |
+| Blocking result | The declared unit still matches, and both value sets remain inside 0–120 months. The mean and median move from 24 to 2, a relative change greater than 50%. That unexplained shift is a semantic **FAIL**. Crew 2 is not invoked, and the failure report sets `model_training_started=false`. |
+
+**Preapproved demonstration parameters (DESIGN).** These values and this threshold apply only to the synthetic demonstration. They are not measurements, units, or limits for `Tenure` or any other column in the Kaggle workbook, and they are not part of the production contract.
+
+| Parameter | Preapproved value |
+|---|---|
+| Reference unit | months |
+| Trusted reference values | 12, 24, 36 |
+| Corrupted handoff values | 1, 2, 3 |
+| Permitted numeric range | 0–120 months |
+| Reference mean and median | 24 |
+| Corrupted mean and median | 2 |
+| Blocking threshold | Both the mean and the median differ from the trusted reference by more than 50% in relative terms |
+| Expected semantic result | **FAIL**, blocking Crew 2 |
+
+Rules for this experiment:
+
+- The trusted reference is this approved fixture only. An arbitrary earlier run, including a previous successful model run, is not a reference.
+- The reference unit is defined by the fixture's approved policy. It is not inferred from `Data Dict` or from the real `Tenure` column.
+- Deterministic Python computes the mean and median from the reference file and from the handoff. The gate does not accept an LLM statement of the shift.
+- The blocking threshold is preapproved: both the mean and the median must differ from the trusted reference by more than 50% in relative terms. Dividing 12, 24, and 36 by 12 is the intended breach. The tolerance is not tuned after seeing a pipeline run.
+- "Unexplained" means the contract still declares months and lists no approved transformation that would account for dividing by 12.
+- The gate reports the failed semantic rule, the column, the reference and handoff mean and median, and the declared unit. It does not repair the values.
+- The synthetic fixture may be committed because it is small and invented. It must not be a copy or subset of the Kaggle workbook.
 
 ## 7. Modeling preprocessing boundary
 
