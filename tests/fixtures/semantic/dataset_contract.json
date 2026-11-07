@@ -1,0 +1,40 @@
+{
+  "contract_version": "0.1.0-semantic-test",
+  "approved_policy_version": "0.1.0-semantic-test",
+  "status": "limited_semantic_test_contract",
+  "authorizes_crew2_training": false,
+  "description": "Synthetic, test-only handoff contract for the section 6.1 semantic experiment. The same contract accompanies tests/fixtures/semantic/reference_months.csv and tests/fixtures/semantic/corrupted_months.csv. It declares units and permitted ranges only. It does not record measurements, validation results, or source hashes, and it is not authorization for Crew 2 training.",
+  "identifier_column": "CustomerID",
+  "target_column": "Churn",
+  "model_input_columns": [],
+  "approved_unit_conversions": [],
+  "no_approved_unit_conversion": true,
+  "unit_assumptions": {
+    "SyntheticTenureMonths": "months"
+  },
+  "columns": {
+    "CustomerID": {
+      "required": true,
+      "nullable": false,
+      "unique": true,
+      "role": "identifier"
+    },
+    "Churn": {
+      "required": true,
+      "nullable": false,
+      "allowed_values": [0, 1],
+      "role": "target"
+    },
+    "SyntheticTenureMonths": {
+      "required": true,
+      "nullable": false,
+      "role": "numeric",
+      "unit": "months",
+      "permitted_numeric_range": {
+        "minimum": 0,
+        "maximum": 120,
+        "inclusive": true
+      }
+    }
+  }
+}
