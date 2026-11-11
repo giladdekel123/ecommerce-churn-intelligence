@@ -91,6 +91,24 @@ class FullPipelineTests(unittest.TestCase):
         with patch('src.crew2_train.train_run', side_effect=RuntimeError('synthetic model error')):
             self.assertEqual(coordinator.crew2_stage(), 'FAILED_CREW2')
         manifest = json.loads((coordinator.run_dir / 'run_manifest.json').read_text())
+        # Phase 4: Crew 2 was entered, but the error came before model fitting began.
+        self.assertTrue(manifest['crew2_reached'])
+        self.assertFalse(manifest['model_training_started'])
+        self.assertFalse(manifest['model_deployed'])
+
+    def test_training_flag_is_set_only_when_fitting_starts(self):
+        coordinator = self.make()
+        coordinator.begin()
+        coordinator.status = 'GATE_PASS_CREW2_AUTHORIZED'
+        coordinator.validation = {'status': 'PASS', 'authorizes_crew2_training': True,
+                                  'model_training_started': False, 'failed_rules': []}
+        def fails_during_fitting(run_dir, on_training_start=None):
+            on_training_start()  # handoff verified, fitting begins ...
+            raise RuntimeError('synthetic error while fitting')
+        with patch('src.crew2_train.train_run', side_effect=fails_during_fitting):
+            self.assertEqual(coordinator.crew2_stage(), 'FAILED_CREW2')
+        manifest = json.loads((coordinator.run_dir / 'run_manifest.json').read_text())
+        self.assertTrue(manifest['crew2_reached'])
         self.assertTrue(manifest['model_training_started'])
         self.assertFalse(manifest['model_deployed'])
 
@@ -120,7 +138,8 @@ class FullPipelineTests(unittest.TestCase):
         coordinator.status = 'GATE_PASS_CREW2_AUTHORIZED'
         coordinator.validation = {'status': 'PASS', 'authorizes_crew2_training': True,
                                   'model_training_started': False, 'failed_rules': []}
-        def fake_train(run_dir):
+        def fake_train(run_dir, on_training_start=None):
+            on_training_start()
             folder = run_dir / 'crew2'
             folder.mkdir()
             for name in ('features.csv', 'model.joblib', 'evaluation_report.md', 'model_card.md'):

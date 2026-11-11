@@ -1,6 +1,8 @@
 # 03 — Architecture and Agent Responsibility Matrix
 
 **Status:** Proposed implementation architecture, not yet coded or proven.  
+**Update (11 Nov 2026):** This planning baseline was implemented (V1) and then extended by Architecture V2: upload workflow, run-specific SHA-256 receipts, policy 2.0.0, contract drafted at the end of Crew 1, and a seven-component live monitor. The as-built behaviour is described in [`10_ARCHITECTURE_V2_IMPLEMENTATION_AND_EVIDENCE.md`](10_ARCHITECTURE_V2_IMPLEMENTATION_AND_EVIDENCE.md). The text below is kept as the original plan.
+
 **Principle:** CrewAI agents reason within defined boundaries; deterministic Python code reads/writes verified data, calculates values and enforces the gate.
 
 ## 1. Runtime components and sequence

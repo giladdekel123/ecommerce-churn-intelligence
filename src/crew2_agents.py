@@ -46,8 +46,12 @@ def check(run_dir: Path) -> dict:
             "model_name": model, "model_deployed": False}
 
 
-def run_agents(run_dir: Path) -> dict:
-    """CrewAI reviews measured summaries; it cannot alter metrics, training, or gate."""
+def run_agents(run_dir: Path, progress=None) -> dict:
+    """CrewAI reviews measured summaries; it cannot alter metrics, training, or gate.
+
+    progress: optional LiveStatus; each agent's state is then recorded from the
+    real CrewAI task events (src/agent_progress.py). None leaves V1 unchanged.
+    """
     from dotenv import load_dotenv
     load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -149,13 +153,21 @@ def run_agents(run_dir: Path) -> dict:
     )
     crew = Crew(agents=[agent1, agent2, agent3], tasks=[t1, t2, t3],
                 process=Process.sequential, memory=False, verbose=True)
-    crew.kickoff()
+    from src.agent_progress import downgrade_without_evidence, track_crew_tasks
+    with track_crew_tasks(progress, {t1: ROLES[0], t2: ROLES[1], t3: ROLES[2]}):
+        crew.kickoff()
     count = Counter()
     if log_path.exists():
         for line in log_path.read_text(encoding="utf-8").splitlines():
             count[json.loads(line)["tool"]] += 1
     missing_tools = [name for name in ("features", "training", "evaluation") if count[name] < 1]
     missing_reports = [name for name in REVIEW_FILES if not (review_dir / name).is_file()]
+    problems = {}
+    for role, tool_key, report in zip(ROLES, ("features", "training", "evaluation"), REVIEW_FILES):
+        found = [f"tool '{tool_key}' not called"] if tool_key in missing_tools else []
+        found += [f"{report} not written"] if report in missing_reports else []
+        problems[role] = "; ".join(found) or None
+    downgrade_without_evidence(progress, problems)
     return {"status": "CREW2_AGENT_REVIEWS_COMPLETE_NEED_HUMAN_REVIEW"
             if not (missing_tools or missing_reports) else "CREW2_AGENT_REVIEWS_INCOMPLETE",
             "run_id": metrics["run_id"], "tool_calls": dict(count),

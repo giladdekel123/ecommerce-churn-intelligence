@@ -22,3 +22,7 @@ __pycache__/
 # Local IDE / system generated files
 .DS_Store
 Thumbs.db
+
+# Local Claude Code settings and permission rules (owner decision: keep local)
+/.claude/settings.json
+/.claude/settings.local.json

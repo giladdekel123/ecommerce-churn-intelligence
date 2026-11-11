@@ -63,9 +63,21 @@ def prepare_finalized_contract(run_dir: Path, policy_path: Path) -> dict:
         raise ValueError("Input must be the original, unapproved Crew 1 draft")
     if audit.get("status") != "PREPARED_NOT_GATE_APPROVED":
         raise ValueError("Unexpected preparation audit status")
-    if (draft.get("source_sha256") != policy.get("source_sha256")
-        or draft.get("source_sha256") != audit.get("source_sha256")):
-        raise ValueError("Frozen source-workbook SHA-256 differs")
+    from src.production_gate import integrity_mode
+    mode = integrity_mode(policy)
+    if mode == "pinned_reference":
+        # V1 behaviour, unchanged: the one pinned workbook only.
+        if (draft.get("source_sha256") != policy.get("source_sha256")
+            or draft.get("source_sha256") != audit.get("source_sha256")):
+            raise ValueError("Frozen source-workbook SHA-256 differs")
+    elif mode == "run_receipt":
+        # V2: draft and audit must agree here; the independent gate alone checks
+        # them against the run receipt recomputed from the stored workbook bytes.
+        digest = draft.get("source_sha256")
+        if not isinstance(digest, str) or len(digest) != 64 or digest != audit.get("source_sha256"):
+            raise ValueError("Draft and preparation audit disagree on the source-workbook SHA-256")
+    else:
+        raise ValueError("Approved policy defines no valid source-integrity rule")
     actual_sha = _sha256(csv_path)
     if (actual_sha != draft.get("prepared_data", {}).get("sha256")
         or actual_sha != audit.get("clean_data_sha256")):
@@ -155,8 +167,13 @@ def finalize(run_dir: Path, policy_path: Path = DEFAULT_POLICY) -> dict:
     contract_path.write_text(json.dumps(final_contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # Imported only here: the validation logic stays independent of this builder.
-    from src.production_gate import validate_production_handoff
-    gate = validate_production_handoff(policy_path, contract_path, run_dir / "clean_data.csv")
+    from src.production_gate import integrity_mode, validate_production_handoff
+    from src.source_receipt import receipt_path
+    policy = _load_json(policy_path)
+    # The receipt location comes from the fixed run layout, never from the contract.
+    receipt = receipt_path(run_dir.parent) if integrity_mode(policy) == "run_receipt" else None
+    gate = validate_production_handoff(policy_path, contract_path, run_dir / "clean_data.csv",
+                                       source_receipt=receipt)
     report_path.write_text(json.dumps(gate, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return {
         "status": gate["status"],

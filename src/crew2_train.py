@@ -53,22 +53,32 @@ def _same_file_in_report(value: str, expected: Path) -> bool:
     return supplied.resolve() == expected.resolve()
 
 
-def verify_handoff(run_dir: Path, policy_path: Path = POLICY_PATH) -> dict:
-    """Fail closed: verify the saved proof *and* independently revalidate actual bytes."""
-    from src.production_gate import validate_production_handoff
+def verify_handoff(run_dir: Path, policy_path: Path | None = None) -> dict:
+    """Fail closed: verify the saved proof *and* independently revalidate actual bytes.
+
+    policy_path: an explicit registered policy, or None to use the version the
+    run's contract declares. Either way only a registered approved policy
+    (src/policy_registry.py) is accepted; a contract cannot supply a path or rules.
+    """
+    from src.policy_registry import approved_policy_path, require_registered
+    from src.production_gate import integrity_mode, validate_production_handoff
+    from src.source_receipt import receipt_path
 
     run_dir = Path(run_dir).resolve()
     approved_runs_dir = (ROOT / "runs").resolve()
     if not run_dir.is_relative_to(approved_runs_dir) or run_dir == approved_runs_dir:
         raise ValueError("Run directory must be inside this project's runs/ folder")
 
-    policy_path = Path(policy_path).resolve()
-    if policy_path != POLICY_PATH.resolve():
-        raise ValueError("Only the pinned approved production policy is permitted")
-
     csv_path = run_dir / "crew1" / "clean_data.csv"
     contract_path = run_dir / "handoff_candidate" / "dataset_contract.json"
     report_path = run_dir / "handoff_candidate" / "validation_report.json"
+    if policy_path is not None:
+        policy_path = require_registered(policy_path).resolve()
+    else:
+        if not contract_path.is_file():
+            raise FileNotFoundError(f"Missing required handoff input: {contract_path}")
+        policy_path = approved_policy_path(
+            _read_json(contract_path).get("approved_policy_version")).resolve()
     # Do not create any output before these checks pass.
     for path in (policy_path, csv_path, contract_path, report_path):
         if not path.is_file():
@@ -94,7 +104,8 @@ def verify_handoff(run_dir: Path, policy_path: Path = POLICY_PATH) -> dict:
             or report.get("contract_version") != contract.get("contract_version")):
         raise ValueError("Run identity or policy/contract version mismatch")
 
-    current = validate_production_handoff(policy_path, contract_path, csv_path)
+    receipt = receipt_path(run_dir) if integrity_mode(policy) == "run_receipt" else None
+    current = validate_production_handoff(policy_path, contract_path, csv_path, source_receipt=receipt)
     if (current.get("status") != "PASS" or current.get("authorizes_crew2_training") is not True
             or current.get("failed_rules") != []):
         raise ValueError("Independent production gate rejected current handoff: "
@@ -248,8 +259,12 @@ def fit_models(X, y, types: dict, *, random_state: int = 42,
     }
 
 
-def train_run(run_dir: Path, *, forest_trees: int = 100) -> dict:
-    """Train from gate-verified handoff; publish outputs only after successful completion."""
+def train_run(run_dir: Path, *, forest_trees: int = 100, on_training_start=None) -> dict:
+    """Train from gate-verified handoff; publish outputs only after successful completion.
+
+    on_training_start: optional callable invoked exactly once, immediately before
+    model fitting begins (after handoff re-verification and data checks pass).
+    """
     import joblib
     import pandas as pd
 
@@ -260,6 +275,8 @@ def train_run(run_dir: Path, *, forest_trees: int = 100) -> dict:
         raise FileExistsError(f"Crew 2 artifacts already exist, refusing overwrite: {dest}")
     data = pd.read_csv(evidence["csv_path"], low_memory=False)
     X, y = build_feature_data(data, evidence["features"], evidence["types"])
+    if on_training_start is not None:
+        on_training_start()
     outcome = fit_models(X, y, evidence["types"], forest_trees=forest_trees)
     staging = Path(tempfile.mkdtemp(prefix=".crew2_staging_", dir=root))
     try:

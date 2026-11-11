@@ -109,8 +109,12 @@ def check(run_dir: Path) -> dict:
     }
 
 
-def run_agents(run_dir: Path) -> dict:
-    """Use LLMs for judgments only; statistics are read from Python reports."""
+def run_agents(run_dir: Path, progress=None) -> dict:
+    """Use LLMs for judgments only; statistics are read from Python reports.
+
+    progress: optional LiveStatus; each agent's state is then recorded from the
+    real CrewAI task events (src/agent_progress.py). None leaves V1 unchanged.
+    """
     from dotenv import load_dotenv
     load_dotenv()  # .env is gitignored; do not print or commit it.
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -159,7 +163,11 @@ def run_agents(run_dir: Path) -> dict:
         return json.dumps({
             "quality": _relevant_quality(fresh_audit),
             "analysis": _relevant_eda(fresh_eda),
-            "contract_policy_status": "INCOMPLETE; NOT APPROVED FOR CREW 2",
+            "contract_policy_status": (
+                "The owner-approved production policy and its 15-predictor allowlist exist, but this run's "
+                "dataset contract is drafted by deterministic code after this review. Crew 2 authorization "
+                "is PENDING the independent deterministic gate; no agent can grant or refuse it."),
+            "unresolved_decisions": "category alias mappings, measurement units, future prediction horizon",
             "target_interpretation": "historical churn flag, with no documented future horizon",
             "missing_policy": "preserve nulls; fit imputation only on Crew 2 training folds",
         })
@@ -212,11 +220,14 @@ def run_agents(run_dir: Path) -> dict:
     business_task = Task(
         description=(
             "Call the business-evidence tool. Read the previous two reviews as context. Write concise "
-            "business-facing findings tied only to verified historical data, and explain that alias mappings, "
-            "units, model-input allowlist, and full production contract are unapproved. "
-            "Do NOT produce, approve, edit or authorize dataset_contract.json. Crew 2 remains blocked."
+            "business-facing findings tied only to verified historical data. Explain that category alias "
+            "mappings and measurement units remain unresolved. State that Crew 2 authorization is pending "
+            "the independent deterministic gate, which runs after this review; do not claim Crew 2 is "
+            "approved or permanently blocked. "
+            "Do NOT produce, approve, edit or authorize dataset_contract.json."
         ),
-        expected_output="Markdown insights with evidence, caveats, next decisions, and explicit Crew 2 blocking status.",
+        expected_output=("Markdown insights with evidence, caveats, next decisions, and a Crew 2 status "
+                         "stated as pending the independent gate."),
         agent=business_agent, context=[quality_task, eda_task],
         output_file=str(run_dir / "insights.md"),
     )
@@ -228,13 +239,22 @@ def run_agents(run_dir: Path) -> dict:
         memory=False,
         verbose=True,
     )
-    crew.kickoff()
+    from src.agent_progress import downgrade_without_evidence, track_crew_tasks
+    with track_crew_tasks(progress, {quality_task: AGENT_ROLES[0], eda_task: AGENT_ROLES[1],
+                                     business_task: AGENT_ROLES[2]}):
+        crew.kickoff()
     recorded = Counter()
     if log_path.exists():
         for line in log_path.read_text(encoding="utf-8").splitlines():
             recorded[json.loads(line)["tool"]] += 1
     missing_tools = [name for name in ("quality", "eda", "business") if recorded[name] < 1]
     missing_outputs = [path.name for path in expected_outputs[:3] if not path.is_file()]
+    problems = {}
+    for role, tool_key, path in zip(AGENT_ROLES, ("quality", "eda", "business"), expected_outputs[:3]):
+        found = [f"tool '{tool_key}' not called"] if tool_key in missing_tools else []
+        found += [f"{path.name} not written"] if path.name in missing_outputs else []
+        problems[role] = "; ".join(found) or None
+    downgrade_without_evidence(progress, problems)
     return {
         "status": "AGENT_REVIEW_COMPLETE_NEEDS_HUMAN_REVIEW" if not (missing_tools or missing_outputs)
                   else "AGENT_REVIEW_INCOMPLETE",
