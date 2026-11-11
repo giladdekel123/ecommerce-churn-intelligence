@@ -16,8 +16,13 @@ import argparse
 import csv
 import hashlib
 import json
+import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 _ALLOWED_TYPES = {"integer", "number", "string"}
 _GOVERNED_FIELDS = ("type", "required", "nullable", "unique", "role", "allowed_values", "min", "max")
@@ -68,8 +73,29 @@ def _normalize(value: str, dtype: str):
     return d
 
 
-def validate_production_handoff(policy_path, contract_path, csv_path) -> dict:
-    """Validate all rows and independent contract rules; return report, never mutate."""
+def integrity_mode(policy: dict) -> str | None:
+    """Source-integrity rule declared by the APPROVED policy (never by the contract).
+
+    'pinned_reference' (V1): one fixed workbook SHA-256 in the policy.
+    'run_receipt' (V2): a run-specific receipt, verified from the stored file bytes.
+    Anything else, including declaring both, is invalid and fails closed.
+    """
+    pinned = "source_sha256" in policy
+    integrity = policy.get("source_integrity")
+    receipt = isinstance(integrity, dict) and integrity.get("mode") == "run_receipt"
+    if pinned and integrity is None:
+        return "pinned_reference"
+    if receipt and not pinned:
+        return "run_receipt"
+    return None
+
+
+def validate_production_handoff(policy_path, contract_path, csv_path, *, source_receipt=None) -> dict:
+    """Validate all rows and independent contract rules; return report, never mutate.
+
+    source_receipt: path to the run's source_receipt.json. Required (and only used)
+    when the approved policy's integrity mode is 'run_receipt'.
+    """
     policy_path, contract_path, csv_path = map(Path, (policy_path, contract_path, csv_path))
     result = {
         "status": "FAIL",
@@ -78,6 +104,8 @@ def validate_production_handoff(policy_path, contract_path, csv_path) -> dict:
         "failed_rules": [],
         "inputs": {"policy_path": str(policy_path), "contract_path": str(contract_path), "csv_path": str(csv_path)},
     }
+    if source_receipt is not None:
+        result["inputs"]["source_receipt_path"] = str(source_receipt)
     issues = result["failed_rules"]
     try:
         policy = _load_json(policy_path, "Policy")
@@ -124,8 +152,37 @@ def validate_production_handoff(policy_path, contract_path, csv_path) -> dict:
     if (policy.get("cleaning_transformation_version") != contract.get("cleaning_transformation_version")
             or not policy.get("cleaning_transformation_version")):
         issues.append(_fail("CTR-005", "Cleaning transformation version mismatch"))
-    if policy.get("source_sha256") != contract.get("source_sha256") or not policy.get("source_sha256"):
-        issues.append(_fail("CTR-006", "Source hash not pinned or mismatched"))
+    mode = integrity_mode(policy)
+    if mode == "pinned_reference":
+        # V1 behaviour, unchanged.
+        if policy.get("source_sha256") != contract.get("source_sha256") or not policy.get("source_sha256"):
+            issues.append(_fail("CTR-006", "Source hash not pinned or mismatched"))
+    elif mode == "run_receipt":
+        result["source_integrity"] = {"mode": mode, "status": "FAILED"}
+        if source_receipt is None:
+            issues.append(_fail("SRC-001", "Policy requires a run-specific source receipt; none was supplied"))
+        else:
+            from src.source_receipt import verify_receipt
+            receipt_file = Path(source_receipt)
+            try:
+                verified = verify_receipt(receipt_file.parent, receipt_file)
+            except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+                issues.append(_fail("SRC-002", "Source receipt integrity check failed", observed=str(exc)))
+            else:
+                result["source_integrity"].update({"verified_source_sha256": verified["source_sha256"]})
+                receipt_ok = True
+                if contract.get("run_id") != verified["run_id"]:
+                    receipt_ok = False
+                    issues.append(_fail("SRC-003", "Source receipt and contract belong to different runs",
+                                        expected=verified["run_id"], observed=contract.get("run_id")))
+                if contract.get("source_sha256") != verified["source_sha256"]:
+                    receipt_ok = False
+                    issues.append(_fail("CTR-006", "Contract source hash differs from verified run receipt",
+                                        expected=verified["source_sha256"], observed=contract.get("source_sha256")))
+                if receipt_ok:
+                    result["source_integrity"]["status"] = "VERIFIED"
+    else:
+        issues.append(_fail("POL-009", "Approved policy defines no single valid source-integrity rule"))
 
     expected_operations = {"rows_dropped": 0, "nulls_imputed": 0,
                            "category_mappings_applied": {}, "numeric_values_clipped": 0,
@@ -268,8 +325,10 @@ def main(argv=None):
     parser.add_argument("--policy", required=True)
     parser.add_argument("--contract", required=True)
     parser.add_argument("--csv", required=True)
+    parser.add_argument("--source-receipt", default=None, help="runs/<id>/source_receipt.json (policy 2.0.0)")
     arguments = parser.parse_args(argv)
-    print(json.dumps(validate_production_handoff(arguments.policy, arguments.contract, arguments.csv), indent=2))
+    print(json.dumps(validate_production_handoff(arguments.policy, arguments.contract, arguments.csv,
+                                                 source_receipt=arguments.source_receipt), indent=2))
 
 
 if __name__ == "__main__":

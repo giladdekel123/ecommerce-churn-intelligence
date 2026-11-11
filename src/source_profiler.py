@@ -1,11 +1,14 @@
 """Read-only source profiling for the e-commerce churn course project.
 
-Produces aggregate-only diagnostics. Never modifies the original Excel file.
-Run from repository root: python src/source_profiler.py
+Produces aggregate-only diagnostics. Never modifies the profiled Excel file.
+Run from repository root:
+    python src/source_profiler.py                      # original workbook -> global profile
+    python src/source_profiler.py --source <x.xlsx> --output <run-specific profile.json>
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -36,10 +39,11 @@ def sha256(path: Path) -> str:
 def profile(path: Path = SOURCE) -> dict:
     if not path.is_file():
         raise FileNotFoundError(f"Source workbook not found: {path}")
-    workbook = pd.ExcelFile(path)
-    if SHEET not in workbook.sheet_names:
-        raise ValueError(f"Missing worksheet {SHEET!r}; found {workbook.sheet_names}")
-    data = pd.read_excel(workbook, sheet_name=SHEET)
+    # Close the workbook after reading so Windows does not keep the file locked.
+    with pd.ExcelFile(path) as workbook:
+        if SHEET not in workbook.sheet_names:
+            raise ValueError(f"Missing worksheet {SHEET!r}; found {workbook.sheet_names}")
+        data = pd.read_excel(workbook, sheet_name=SHEET)
     columns = [str(name) for name in data.columns]
     report = {
         "source_file": path.name,
@@ -98,16 +102,43 @@ def profile(path: Path = SOURCE) -> dict:
     return report
 
 
-def main() -> None:
-    report = profile()
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def write_profile(source: Path, output: Path) -> dict:
+    """Profile one specific workbook into a NEW file; never overwrite an existing profile.
+
+    Each profile records the SHA-256 of the workbook it describes, so a run-specific
+    profile can be checked against that run's own source rather than the global one.
+    """
+    output = Path(output)
+    if output.exists():
+        raise FileExistsError(f"Refusing to overwrite existing source profile: {output}")
+    report = profile(Path(source))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return report
+
+
+def main(argv=None) -> None:
+    parser = argparse.ArgumentParser(description="Aggregate-only, read-only workbook profile")
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    parser.add_argument("--output", type=Path, default=None,
+                        help="New profile file (default: the existing global profile location)")
+    args = parser.parse_args(argv)
+    if args.output is None:
+        # Original behaviour: refresh the global profile of the default workbook.
+        report = profile(args.source)
+        output = OUTPUT
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    else:
+        output = args.output
+        report = write_profile(args.source, output)
     print(f"Source: {report['source_file']} / {report['worksheet']}")
+    print(f"Source SHA-256: {report['source_sha256']}")
     print(f"Rows: {report['rows']}; columns: {report['columns_count']}")
     print(f"Missing cells: {report['total_missing_cells']}")
     print(f"Identifier: {report['identifier']}")
     print(f"Churn counts: {report['target_counts']}")
-    print(f"Aggregate report saved to: {OUTPUT.relative_to(ROOT)}")
+    print(f"Aggregate report saved to: {output}")
     print("No original data was modified; no transformations were approved.")
 
 

@@ -19,6 +19,10 @@
 | J-02 | Branches and Pull Requests required, **even when working solo** | Jonathan Slack reply reported 18 Oct 2026 | Confirmed |
 | J-03 | No data dumps in repo; small model may be committed, otherwise external link | Jonathan Slack reply reported 18 Oct 2026 | Confirmed |
 | J-04 | Final presentation approximately 10 minutes | Jonathan Slack reply reported 18 Oct 2026 | Confirmed |
+| POL-V1 | Production policy 1.0.0 with a pinned source workbook and 15 predictors | Project owner, 7 Nov 2026 (`docs/08`) | Approved; preserved for V1 and historical runs |
+| V2-01 – V2-09 | Architecture V2: upload workflow, run-specific SHA-256 receipt, separate policy 2.0.0 (content rules unchanged), contract drafted at the end of Crew 1, seven genuine statuses, locally generated corrupted workbook, readiness check kept, branch + PR, demonstration button removed | Project owner, 11 Nov 2026 (`docs/09`) | Approved and implemented; evidence in `docs/10` |
+| V2-UI-1 | The dashboard opens clean; historical runs appear only through "View Past Runs"; a finished analysis is never relaunched from the same upload | Project owner corrections, 11 Nov 2026 | Implemented |
+| V2-FLAG | `crew2_reached` = Crew 2 entered; `model_training_started` = model fitting began | Project owner, Phase 4, 11 Nov 2026 | Implemented; one V1 test updated accordingly |
 
 ## B. Instructor clarifications — CLOSED (18 October 2026)
 

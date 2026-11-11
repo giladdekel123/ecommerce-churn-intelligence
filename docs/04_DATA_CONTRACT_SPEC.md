@@ -3,6 +3,8 @@
 **Status:** The initial test policy (`contracts/approved_policy.json`, version `0.1.0-test`) and the deterministic Python validator (`src/contract_validator.py`) are implemented. Two structural automated tests have succeeded: a valid synthetic handoff returns PASS, and `Churn=7` returns FAIL. The complete production contract and the semantic validator are still pending.  
 **Core instructor output:** `dataset_contract.json` published by Crew 1.
 
+**Update (11 Nov 2026):** The production policy (`production_policy_v1.json`, 1.0.0) and gate (`src/production_gate.py`) are implemented. Architecture V2 adds `production_policy_v2.json` (2.0.0). Its content rules are identical to 1.0.0, but the pinned source hash is replaced by a run-specific SHA-256 receipt checked by the gate (`SRC-001`–`SRC-003`, `CTR-006`). A genuine V2 run rejected `SatisfactionScore = 9` with `CSV-007`. See [`10_ARCHITECTURE_V2_IMPLEMENTATION_AND_EVIDENCE.md`](10_ARCHITECTURE_V2_IMPLEMENTATION_AND_EVIDENCE.md). The status line above reflects an earlier stage.
+
 ## 1. Why two related specifications?
 
 Crew 1 publishes a contract describing its cleaned dataset. However, if Crew 1 were permitted to rewrite the rules whenever it accidentally changed a column, a dataset and a new contract could agree while both violated the intended interface.

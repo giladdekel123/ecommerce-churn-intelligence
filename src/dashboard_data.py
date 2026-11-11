@@ -70,8 +70,45 @@ def snapshot(runs_root: Path, run_id: str) -> dict[str, Any]:
                 and manifest.get("validation_status") == "PASS"
                 and manifest.get("crew2_reached") is True)
     metrics = _json_file(folder / "crew2" / "model_metrics.json") if complete else None
-    return {"run_id": run_id, "dir": folder, "manifest": manifest,
+    live = _json_file(folder / "live_status.json")  # V2 runs only; None for V1 history
+    return {"run_id": run_id, "dir": folder, "manifest": manifest, "live": live,
             "gate": gate, "eda": eda, "metrics": metrics, "complete": complete}
+
+
+_LIMIT_RULES = {"CSV-006": ("min", "Approved minimum"), "CSV-007": ("max", "Approved maximum"),
+                "CSV-005": ("allowed_values", "Approved values"),
+                "CHURN-003": ("allowed_values", "Approved values")}
+
+
+def gate_findings(gate: dict | None) -> list[dict]:
+    """Readable rows for each failed gate rule.
+
+    The approved limit is read from the REGISTERED policy named in the gate
+    report, never from the run's own contract, so it cannot be relaxed by a run.
+    """
+    if not gate or not isinstance(gate.get("failed_rules"), list):
+        return []
+    columns = {}
+    try:
+        from src.policy_registry import approved_policy_path
+        policy = json.loads(approved_policy_path(gate.get("policy_version")).read_text(encoding="utf-8"))
+        columns = policy.get("columns", {})
+    except (OSError, ValueError, TypeError):
+        pass
+    rows = []
+    for rule in gate["failed_rules"]:
+        if not isinstance(rule, dict):
+            continue
+        column = rule.get("column")
+        key, label = _LIMIT_RULES.get(rule.get("rule_id"), (None, None))
+        approved = columns.get(column, {}).get(key) if key and column else None
+        rows.append({
+            "rule_id": rule.get("rule_id"), "column": column, "message": rule.get("message"),
+            "observed": ", ".join(map(str, rule.get("observed") or [])) or None,
+            "rows": ", ".join(map(str, rule.get("rows") or [])) or None,
+            "approved_label": label, "approved": approved,
+        })
+    return rows
 
 
 def read_report(run: dict[str, Any], report_name: str) -> str | None:

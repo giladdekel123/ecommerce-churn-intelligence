@@ -1,5 +1,7 @@
 # 05 — Implementation Readiness, Phases and Risks
 
+**Update (11 Nov 2026):** This is the original pre-implementation plan, kept for history. The project has since been implemented (V1) and extended (Architecture V2, Phases 0–5 in `docs/09`). Current status, test results and genuine run evidence are in [`10_ARCHITECTURE_V2_IMPLEMENTATION_AND_EVIDENCE.md`](10_ARCHITECTURE_V2_IMPLEMENTATION_AND_EVIDENCE.md) and the README.
+
 **Updated:** 2026-10-18  
 **Milestone:** Internal project baseline by 21 October; instructor submission by 10 November.
 

@@ -168,9 +168,25 @@ def draft(run_dir: Path, profile_path: Path = PROFILE, policy_path: Path = POLIC
     }
 
 
-def run(run_dir: Path) -> Path:
+RUN_PROFILE_NAME = "source_profile.json"
+
+
+def resolve_profile_path(run_dir: Path, profile_path: Path | None = None) -> Path:
+    """Choose the source profile describing THIS run's workbook.
+
+    Order: an explicit path, then the run's own crew1/source_profile.json, then the
+    legacy global profile (unchanged V1 behaviour). The choice grants nothing:
+    draft() still fails closed unless the profile's SHA-256 equals the run audit's.
+    """
+    if profile_path is not None:
+        return Path(profile_path)
+    per_run = Path(run_dir) / RUN_PROFILE_NAME
+    return per_run if per_run.is_file() else PROFILE
+
+
+def run(run_dir: Path, profile_path: Path | None = None) -> Path:
     run_dir = Path(run_dir)
-    contract = draft(run_dir)
+    contract = draft(run_dir, resolve_profile_path(run_dir, profile_path))
     path = run_dir / "dataset_contract.json"
     if path.exists():
         raise FileExistsError(f"Refusing to overwrite existing dataset contract: {path}")
@@ -181,8 +197,10 @@ def run(run_dir: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Draft the Crew 1 handoff; NEVER authorize Crew 2")
     parser.add_argument("--run-dir", required=True, type=Path)
+    parser.add_argument("--profile", type=Path, default=None,
+                        help="Source profile for this run's workbook (default: run's own, else global)")
     args = parser.parse_args()
-    path = run(args.run_dir)
+    path = run(args.run_dir, args.profile)
     print(json.dumps({"status": "DRAFT_CREATED_NOT_GATE_APPROVED", "path": str(path),
                       "authorizes_crew2_training": False}, indent=2))
 
