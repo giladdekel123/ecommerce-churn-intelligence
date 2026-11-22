@@ -1,6 +1,8 @@
 # Public portfolio demo (read-only replay)
 
-Status: the read-only replay demo was merged in PR #10. The Guided Review and Interactive Validation Lab described below are on `feature/interactive-validation-lab`, pending review. This document does not record a public URL; add it here and in the README only once the owner confirms it.
+Public URL: https://gilad-churn-intelligence.streamlit.app
+
+Status: **deployed** on Streamlit Community Cloud from this repository (Cloud-side settings are managed by the owner). The app redeploys when the deployed branch changes. The replay demo was merged in PR #10; the Guided Review and Interactive Validation Lab were added in PR #11. No secrets are used or needed.
 
 ## What it is
 `demo/demo_app.py` replays two **genuine, recorded** runs of the full pipeline from sanitized evidence:
@@ -36,7 +38,7 @@ A slider (1-10) for a candidate `SatisfactionScore`, a reset control, and a verd
 ## Dependencies
 `demo/requirements.txt` contains only `streamlit==1.67.0`. It deliberately excludes CrewAI, google-genai, scikit-learn and the rest of the root requirements. Verified by installing only this file into a clean Python 3.12.10 venv (Streamlit 1.67.0, pandas 3.1.1, no CrewAI) and running the 38 demo tests; the full suite (215 tests) was run on Python 3.12 with the root requirements.
 
-## Deployment procedure (Streamlit Community Cloud) — requires owner approval
+## Deployment procedure (Streamlit Community Cloud) — as used; repeat only with owner approval
 1. Review and merge the Pull Request for `feature/public-demo` (never commit to `main` directly).
 2. At share.streamlit.io choose **Create app** → repository `giladdekel123/ecommerce-churn-intelligence`, branch `main`, main file path `demo/demo_app.py`.
 3. In Advanced settings, select **Python 3.12** (the version tested) and **add no secrets**.
