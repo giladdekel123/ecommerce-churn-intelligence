@@ -1,0 +1,194 @@
+"""Public, read-only portfolio demo: replay of two genuine, recorded pipeline runs.
+
+Deliberately self-contained: it imports only the standard library and Streamlit,
+reads only the sanitized JSON files in demo/evidence/, and has no code path that
+launches a pipeline, calls Gemini, trains a model, accepts an upload or reads
+secrets. The full operator application remains app.py.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import streamlit as st
+
+EVIDENCE = Path(__file__).resolve().parent / "evidence"
+SCENARIOS = {"PASS — original dataset": "pass", "FAIL — corrupted workbook": "fail"}
+ICON = {"COMPLETED": "✅ COMPLETED", "FAILED": "❌ FAILED", "BLOCKED": "⛔ BLOCKED", "PENDING": "· not yet reached"}
+REPLAY_NOTICE = (
+    "**Historical execution replay.** This page shows the recorded outcome of a genuine past run on the "
+    "author's machine. No agents are running, no Gemini requests are made, nothing is uploaded or trained, "
+    "and nothing here can start the pipeline."
+)
+
+
+@st.cache_data
+def load_scenario(key: str) -> dict:
+    """Load one evidence file, refusing it if it does not match the recorded SHA-256."""
+    # Normalize line endings so a Windows (CRLF) checkout hashes the same as the LF original.
+    raw = (EVIDENCE / f"{key}.json").read_bytes().replace(b"\r\n", b"\n")
+    expected = json.loads((EVIDENCE / "MANIFEST.json").read_text(encoding="utf-8"))["sha256"][f"{key}.json"]
+    if hashlib.sha256(raw).hexdigest() != expected:
+        raise ValueError(f"Evidence file {key}.json does not match MANIFEST.json")
+    return json.loads(raw.decode("utf-8"))
+
+
+def short_time(value: str | None) -> str:
+    return value[11:19] + " UTC" if value else "—"
+
+
+def overview(d: dict) -> None:
+    m, g = d["manifest"], d["gate"]
+    st.subheader(d["title"])
+    st.caption(f"Recorded run `{d['run_id']}` · policy {g['policy_version']} · "
+               f"{m['started_at'][:10]} · source SHA-256 `{d['source_sha256_short']}…`")
+    st.write(d["source_description"])
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Independent gate", g["status"])
+    c2.metric("Crew 2 reached", "Yes" if m["crew2_reached"] else "No")
+    c3.metric("Model training", "Started" if m["model_training_started"] else "Not started")
+    c4.metric("Model deployed", "No" if not m["model_deployed"] else "Unexpected")
+    if g["status"] == "PASS":
+        st.success("The deterministic gate authorized Crew 2. The run still needs human review; "
+                   "it is a retrospective course experiment, not a production predictor.")
+    else:
+        st.error("The deterministic gate **stopped the run** before any model was trained. "
+                 "The three Crew 2 agents never started.")
+        st.info("Crew 1's agent reviews do not mention the corrupted value. It was the deterministic, "
+                "independent gate, not an agent, that caught it. That separation is the point of the design.")
+
+
+def pipeline(d: dict) -> None:
+    st.markdown("Step through the **seven recorded component statuses** (six agents plus the gate).")
+    comps = d["components"]
+    step = st.slider("Replay position", 0, len(comps), len(comps), key=f"step_{d['scenario']}",
+                     help="0 = before the run; 7 = the recorded end state. This is a replay control, not a live view.")
+    rows = []
+    for i, c in enumerate(comps):
+        shown = i < step
+        rows.append({"#": i + 1, "Component": c["name"], "Crew": c["crew"],
+                     "Recorded status": ICON.get(c["state"], c["state"]) if shown else ICON["PENDING"],
+                     "Started": short_time(c["started_at"]) if shown else "—",
+                     "Finished": short_time(c["finished_at"]) if shown else "—"})
+    st.dataframe(rows, hide_index=True, width="stretch")
+    choice = st.selectbox("Inspect a component", [c["name"] for c in comps], key=f"comp_{d['scenario']}")
+    c = next(c for c in comps if c["name"] == choice)
+    st.markdown(f"**{c['name']}** · {c['crew']} · {c['kind']} · recorded state **{c['state']}**")
+    if c["detail"]:
+        st.write(f"Recorded detail: {c['detail']}")
+    related = [e for e in d["excerpts"] if e["component"] == c["name"]]
+    if related:
+        st.caption(f"{len(related)} recorded report excerpt(s) are available in the *Agent excerpts* tab.")
+    elif c["kind"] == "agent":
+        st.caption("No report excerpt exists for this component: it never started in this run.")
+
+
+def gate(d: dict) -> None:
+    g = d["gate"]
+    st.markdown(f"Source integrity (SHA-256 receipt): **{g['source_integrity_status']}**")
+    if g["status"] == "PASS":
+        st.success(f"Gate PASS under approved policy {g['policy_version']}: no rule violations. "
+                   "Crew 2 was authorized.")
+        return
+    st.error(f"Gate FAIL under approved policy {g['policy_version']}. Crew 2 not authorized.")
+    st.dataframe([{"Rule": f["rule_id"], "Column": f["column"], "Observed value": f["observed"],
+                   "Approved limit": f"{f['approved_label']}: {f['approved_value']}",
+                   "CSV line": f["csv_lines"], "Message": f["message"]} for f in g["findings"]],
+                 hide_index=True, width="stretch")
+    f = g["findings"][0]
+    st.markdown(f"**Reading the finding.** A single `{f['column']}` value of `{f['observed']}` exceeds the "
+                f"approved maximum of `{f['approved_value']}`. The approved limit comes from the "
+                "version-controlled policy, never from the run's own contract, so a run cannot relax it. "
+                "The gate fails closed.")
+
+
+def model(d: dict) -> None:
+    m = d["metrics"]
+    if not m:
+        st.warning("No model was trained in this run, so there are no metrics. Metrics from other runs are "
+                   "deliberately not shown here.")
+        return
+    st.warning("**Retrospective experimental results, not evidence of production readiness.** Churn labels "
+               "have no documented future prediction horizon; these are descriptive measurements on one "
+               "historical dataset.")
+    st.caption(f"{m['total_rows']:,} rows · {m['training_rows']:,} training / {m['test_rows']:,} held-out "
+               f"({m['test_churn_count']} churners in held-out set). {m['selection_rule']}. {m['test_use']}.")
+    h = m["holdout_once"]
+    names = {"majority_baseline": "Majority baseline", "logistic_regression": "Logistic regression",
+             "random_forest": "Random forest"}
+    st.dataframe([{"Model": names[k] + (" (selected)" if k == m["winner"] else ""),
+                   "Accuracy": v["accuracy"], "Precision": v["precision"], "Recall": v["recall"],
+                   "F1": v["f1"], "ROC AUC": v["roc_auc"]} for k, v in h.items()],
+                 hide_index=True, width="stretch")
+    pick = st.radio("Confusion matrix (held-out set)", list(names), format_func=names.get, horizontal=True,
+                    index=list(names).index(m["winner"]), key="cm_model")
+    (tn, fp), (fn, tp) = h[pick]["confusion_matrix"]
+    st.dataframe([{"": "Actual: retained", "Predicted: retained": tn, "Predicted: churn": fp},
+                  {"": "Actual: churned", "Predicted: retained": fn, "Predicted: churn": tp}],
+                 hide_index=True, width="content")
+    st.markdown("**Accuracy alone misleads here:** the baseline that never predicts churn scores "
+                f"{h['majority_baseline']['accuracy']:.1%} accuracy with zero recall.")
+    cv = m["cv_training_only"]
+    st.caption("Model selection used training-only 3-fold CV F1: " + "; ".join(
+        f"{names[k]} {v['f1_mean']:.3f} ± {v['f1_std']:.3f}" for k, v in cv.items()))
+    with st.expander("Recorded limitations"):
+        for item in m["limitations"]:
+            st.markdown(f"- {item}")
+
+
+def excerpts(d: dict) -> None:
+    st.caption("Short verbatim excerpts selected by the author from the agents' recorded reports. Full reports "
+               "are not published. Agent output requires human review.")
+    items = d["excerpts"]
+    agents = list(dict.fromkeys(e["component"] for e in items))
+    who = st.selectbox("Agent", agents, key=f"agent_{d['scenario']}")
+    for e in items:
+        if e["component"] == who:
+            st.markdown(f"> {e['text']}")
+            st.caption(f"Excerpt from `{e['source_report']}` · recorded run `{d['run_id']}`")
+    if d["scenario"] == "fail":
+        st.info("The Crew 2 agents (Feature Engineering Specialist, Machine Learning Engineer, Model "
+                "Evaluation Specialist) were BLOCKED in this run, so they have no excerpts.")
+
+
+def about() -> None:
+    st.markdown("""
+**What this is.** A two-crew CrewAI workflow for analysing historical e-commerce churn, with a deterministic
+Python validation gate between the crews. Crew 2 may train models only if the data and contract pass the
+approved policy.
+
+**What this demo is not.** It is not the running application. It replays two genuine, recorded local runs
+from sanitized evidence files. Nothing executes here.
+
+**Limitations**
+- Two recorded runs only; the interactive controls navigate recorded evidence.
+- Agent text is AI-generated and was reviewed only for excerpt selection.
+- Model metrics are retrospective on a public dataset; no future horizon is defined and no deployment is claimed.
+- No customer rows, models, logs or credentials are published.
+
+**Data attribution.** Dataset: Ankit Verma, *Ecommerce Customer Churn Analysis and Prediction*
+([Kaggle](https://www.kaggle.com/datasets/ankitverma2010/ecommerce-customer-churn-analysis-and-prediction)),
+licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). This is a **non-commercial**
+portfolio demo; share-alike conditions apply to adapted material. **Transformations:** the figures shown are
+aggregate statistics, gate results and model metrics derived from the data; the FAIL scenario used a locally
+modified copy of the workbook with one value altered. No dataset rows or workbooks are redistributed.
+""")
+
+
+def main() -> None:
+    st.set_page_config(page_title="Churn Intelligence — Replay Demo", page_icon="🔍", layout="wide")
+    st.title("E-commerce Churn Intelligence — Architecture V2")
+    st.warning(REPLAY_NOTICE)
+    label = st.radio("Recorded scenario", list(SCENARIOS), horizontal=True, key="scenario")
+    d = load_scenario(SCENARIOS[label])
+    tabs = st.tabs(["Overview", "Seven recorded statuses", "Gate findings", "Model results",
+                    "Agent excerpts", "About & limitations"])
+    for tab, render in zip(tabs, (overview, pipeline, gate, model, excerpts)):
+        with tab:
+            render(d)
+    with tabs[5]:
+        about()
+
+
+main()
