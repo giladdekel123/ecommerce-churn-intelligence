@@ -18,6 +18,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +31,9 @@ PIPELINE = ROOT / "src" / "full_pipeline.py"
 LOCK_NAME = ".active_run.lock"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 FINAL_SUCCESS = "FULL_RUN_COMPLETE_NEEDS_HUMAN_REVIEW"
+STALE_TEMP_SECONDS = 3600     # an orphaned staging temp file older than this was left by a crash
+REPLACE_ATTEMPTS = 40         # bounded retry for a momentarily locked target (Windows)
+REPLACE_DELAY_SECONDS = 0.05
 _popen = subprocess.Popen          # patched in tests; never shell=True
 _PROCESSES: dict = {}              # run_id -> Popen started by this server process
 
@@ -57,8 +62,76 @@ def is_final(status) -> bool:
     return isinstance(status, str) and (status == FINAL_SUCCESS or status.startswith("FAILED_"))
 
 
+def _file_matches(path: Path, digest: str) -> bool:
+    """True only for a readable file whose SHA-256 is `digest`. Never raises for an OSError:
+    on Windows a file being replaced by another thread is briefly unreadable, which here just
+    means "not verified yet"."""
+    try:
+        return Path(path).is_file() and _sha256(path) == digest
+    except OSError:
+        return False
+
+
+def _sha256_stable(path: Path, attempts: int = 5) -> str:
+    """SHA-256 of a staged file, tolerating a momentary lock from a concurrent staging."""
+    for attempt in range(attempts):
+        try:
+            return _sha256(path)
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.02)
+    raise AssertionError("unreachable")
+
+
+def _remove_stale_temps(directory: Path) -> None:
+    """Delete staging temp files left behind by a crash. Recent ones may belong to a live call."""
+    cutoff = time.time() - STALE_TEMP_SECONDS
+    for pattern in ("*.xlsx.*.tmp", "*.xlsx.tmp"):  # current and legacy temp names
+        for orphan in directory.glob(pattern):
+            try:
+                if orphan.stat().st_mtime < cutoff:
+                    orphan.unlink()
+            except OSError:
+                pass
+
+
+def _store_atomically(data: bytes, target: Path, digest: str) -> None:
+    """Write `data` to `target` so no reader or concurrent writer can see a partial file.
+
+    Each call writes its OWN uniquely named temp file in the same folder, flushes it to disk,
+    then renames it over the target (an atomic replace). The target is content-addressed, so
+    every concurrent writer of this digest writes identical bytes and the last rename is harmless.
+    A crash before the rename leaves only an orphan temp file, never a truncated target.
+    """
+    _remove_stale_temps(target.parent)
+    descriptor, temp_name = tempfile.mkstemp(prefix=target.name + ".", suffix=".tmp", dir=target.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        for _ in range(REPLACE_ATTEMPTS):
+            try:
+                os.replace(temp, target)
+                return
+            except PermissionError:  # Windows: the target is momentarily open in another thread/process
+                if _file_matches(target, digest):
+                    return  # someone stored identical content meanwhile: nothing left to do
+                time.sleep(REPLACE_DELAY_SECONDS)
+        if _file_matches(target, digest):
+            return
+        raise UploadError("The uploaded file could not be stored safely; please try again")
+    finally:
+        try:
+            temp.unlink()  # already gone after a successful replace
+        except OSError:
+            pass
+
+
 def stage_upload(name: str, data: bytes) -> dict:
-    """Store an uploaded workbook. Does NOT start anything."""
+    """Store an uploaded workbook. Does NOT start anything. Safe to call concurrently."""
     name = Path(str(name or "")).name
     if not name.lower().endswith(".xlsx"):
         raise UploadError("Only Excel .xlsx workbooks are accepted")
@@ -66,15 +139,13 @@ def stage_upload(name: str, data: bytes) -> dict:
         raise UploadError("The uploaded file is empty")
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadError(f"The uploaded file exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
-    if not data.startswith(b"PK\x03\x04"):
+    if not data.startswith(b"PK"):
         raise UploadError("The file is not a valid .xlsx workbook (not an Office Open XML package)")
     digest = hashlib.sha256(data).hexdigest()
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     target = UPLOADS_DIR / f"{digest}.xlsx"
-    if not target.is_file() or _sha256(target) != digest:
-        temp = target.with_name(target.name + ".tmp")
-        temp.write_bytes(data)
-        temp.replace(target)
+    if not _file_matches(target, digest):
+        _store_atomically(data, target, digest)
     return {"name": name, "size": len(data), "sha256": digest, "path": str(target)}
 
 
@@ -153,7 +224,7 @@ def launch(upload: dict, *, runs_root: Path | None = None, python: str | None = 
     source = Path(upload.get("path", "")).resolve()
     if not source.is_relative_to(UPLOADS_DIR.resolve()) or not source.is_file():
         raise UploadError("The uploaded workbook is no longer available; upload it again")
-    if _sha256(source) != upload.get("sha256"):
+    if _sha256_stable(source) != upload.get("sha256"):
         raise UploadError("The stored upload no longer matches its fingerprint; upload it again")
     runs_root = Path(runs_root or RUNS_ROOT)
     runs_root.mkdir(parents=True, exist_ok=True)
