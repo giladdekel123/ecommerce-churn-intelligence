@@ -1,6 +1,6 @@
 # Public portfolio demo (read-only replay)
 
-Status: **implemented locally on `feature/public-demo`; not deployed.** No public URL exists yet.
+Status: the read-only replay demo was merged in PR #10. The Guided Review and Interactive Validation Lab described below are on `feature/interactive-validation-lab`, pending review. This document does not record a public URL; add it here and in the README only once the owner confirms it.
 
 ## What it is
 `demo/demo_app.py` replays two **genuine, recorded** runs of the full pipeline from sanitized evidence:
@@ -10,11 +10,21 @@ Status: **implemented locally on `feature/public-demo`; not deployed.** No publi
 | PASS | `20261111T094219Z_1fbdc4d8` | Gate PASS, Crew 2 completed, model **not deployed**, needs human review |
 | FAIL | `20261111T104100Z_ab39b7ad` | Deliberately corrupted workbook (`SatisfactionScore = 9`); gate FAIL `CSV-007`; Crew 2 blocked, no training |
 
-Visitors can switch scenarios, step through the seven recorded component statuses (six agents + gate), inspect the gate finding, see the held-out metrics (labelled retrospective) and browse short verbatim agent-report excerpts. Every view is labelled a **historical execution replay**.
+Visitors can switch scenarios, take a **Guided Review**, step through the seven recorded component statuses (six agents + gate), inspect the gate finding, try the **Interactive Validation Lab**, see the held-out metrics (labelled retrospective) and browse short verbatim agent-report excerpts. The recorded views are labelled a **historical execution replay**.
+
+### Guided Review
+Four steps per scenario: Crew 1 agents, the independent gate, Crew 2 agents, and the implications for model training. It shows only what the run recorded (states, the recorded start/finish times, recorded detail text). The evidence has no complete event timeline, so this is a guided review, **not** a live or simulated execution: no durations, intermediate states or agent actions are inferred. Agents that never started (FAIL scenario) are shown as BLOCKED with no times.
+
+### Interactive Validation Lab
+A slider (1-10) for a candidate `SatisfactionScore`, a reset control, and a verdict from the approved V2 policy: values 1-5 give a **single-rule PASS**, values above 5 give **FAIL `CSV-007`** with an explanation.
+- **A single-rule PASS is not a dataset PASS.** The independent gate additionally checks policy approval, contract-vs-policy consistency, the source-integrity receipt, every row against every column's rules, and count/hash consistency. The lab says this prominently.
+- **Source of truth:** `demo/policy_lab.py` reads the limits at run time from `contracts/production_policy_v2.json`; no bound is typed into the demo. It mirrors the production gate's numeric-bound comparison (it does not call or modify the gate), and refuses to give a verdict if the policy adds a constraint on this column that it does not evaluate.
+- **Drift protection:** the tests push values 0-11 through the real `validate_production_handoff` using the real policy's column definition and require identical verdicts and rule IDs.
+- It is the one interactive exception to "replay only": it evaluates the value a visitor picks, locally, and sends or saves nothing.
 
 ## What it is not / limitations
-- Not the running application: nothing executes. No Gemini request, no agent, no training, no upload-triggered run, no subprocess, no secrets (enforced by `tests/test_demo_app.py`).
-- Only two recorded runs. The controls navigate recorded evidence; they do not compute anything.
+- Not the running application: no pipeline runs. No Gemini request, no agent, no training, no upload, no subprocess, no secrets (enforced by `tests/test_demo_app.py`). The only button is the lab's reset.
+- Only two recorded runs. The scenario, review and replay controls navigate recorded evidence; the lab checks one value against one rule and is not a dataset-level check.
 - Agent excerpts are AI-generated text, hand-selected and verified verbatim against the source reports. Full reports are not published.
 - Metrics are retrospective on one public dataset, with no defined prediction horizon. They are not evidence of production readiness.
 - Dataset attribution: Ankit Verma, *Ecommerce Customer Churn Analysis and Prediction* (https://www.kaggle.com/datasets/ankitverma2010/ecommerce-customer-churn-analysis-and-prediction), declared license CC BY-NC-SA 4.0 (https://creativecommons.org/licenses/by-nc-sa/4.0/). This is a non-commercial portfolio demo; share-alike conditions apply to adapted material. Transformations: aggregate statistics, gate results and model metrics derived from the data; the FAIL scenario used a locally modified copy (one value altered) that is not redistributed. The demo shows aggregates only. No rows, models, logs, workbooks or local paths are published.
@@ -24,7 +34,7 @@ Visitors can switch scenarios, step through the seven recorded component statuse
 `demo/evidence/pass.json`, `fail.json`, `MANIFEST.json` (SHA-256 of each; the app refuses a file that does not match). These hashes are computed over the file contents with line endings normalized (CRLF treated as LF) so that Windows and Linux checkouts agree. They are an accidental-corruption and portability check only: they are **not** the pipeline's byte-for-byte source-integrity receipts (`source_receipt.json`, SHA-256 of the uploaded workbook), and the manifest is **not** cryptographic proof of authenticity, since anyone who can edit the evidence can edit the manifest too. `tools/build_demo_evidence.py` names every published field explicitly, fails if an excerpt is not verbatim, and fails on any local path, e-mail, key-like or secret-like string. It reads the git-ignored `runs/` folder and is a local, manual tool. If evidence is regenerated, inspect the JSON by hand before committing.
 
 ## Dependencies
-`demo/requirements.txt` contains only `streamlit==1.67.0`. It deliberately excludes CrewAI, google-genai, scikit-learn and the rest of the root requirements. Verified by installing only this file into a clean Python 3.12.10 venv (Streamlit 1.67.0, pandas 3.1.1, no CrewAI) and running the 16 demo tests; the full suite (193 tests) was run on Python 3.12 with the root requirements.
+`demo/requirements.txt` contains only `streamlit==1.67.0`. It deliberately excludes CrewAI, google-genai, scikit-learn and the rest of the root requirements. Verified by installing only this file into a clean Python 3.12.10 venv (Streamlit 1.67.0, pandas 3.1.1, no CrewAI) and running the 38 demo tests; the full suite (215 tests) was run on Python 3.12 with the root requirements.
 
 ## Deployment procedure (Streamlit Community Cloud) — requires owner approval
 1. Review and merge the Pull Request for `feature/public-demo` (never commit to `main` directly).

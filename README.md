@@ -6,7 +6,7 @@
 - the original workbook passed the independent gate and completed Crew 2;
 - a corrupted workbook was rejected by the gate (`CSV-007`, `SatisfactionScore = 9`) with Crew 2 blocked.
 
-193 automated tests pass (177 application + 16 public-demo). Generated agent reports require human review. **Not deployed.** A read-only public demo is prepared but **not yet deployed** (see below).
+215 automated tests pass (177 application + 38 public-demo). Generated agent reports require human review. **Not deployed.** A read-only public demo is prepared but **not yet deployed** (see below).
 **Submission deadline:** **17 November 2026** (extended from 10 November).
 **Repository:** https://github.com/giladdekel123/ecommerce-churn-intelligence
 
@@ -16,7 +16,7 @@
      only after the Streamlit Community Cloud deployment has succeeded and been checked. -->
 **Launch Interactive Demo: _not yet deployed_.**
 
-A read-only **historical execution replay** of one genuine PASS run and one genuine FAIL run lives in [`demo/`](demo/demo_app.py). It never runs agents, calls Gemini, trains, uploads or reads secrets. See [`docs/11_PUBLIC_DEMO.md`](docs/11_PUBLIC_DEMO.md) for scope, limitations and the deployment procedure. Run it locally with `python -m streamlit run demo/demo_app.py`.
+A read-only **historical execution replay** of one genuine PASS run and one genuine FAIL run lives in [`demo/`](demo/demo_app.py), with a **Guided Review** of the recorded agent activity and an **Interactive Validation Lab**: a slider tests a candidate `SatisfactionScore` (1-10) against the approved V2 policy (1-5 passes; above 5 fails with `CSV-007`). A lab PASS covers that single rule only and is **not** a dataset-level gate PASS. The demo never runs agents, calls Gemini, trains, uploads or reads secrets. See [`docs/11_PUBLIC_DEMO.md`](docs/11_PUBLIC_DEMO.md) for scope, limitations and the deployment procedure. Run it locally with `python -m streamlit run demo/demo_app.py`.
 
 ## What the project does
 
@@ -218,7 +218,7 @@ src/crew1_*.py, src/crew2_*.py Crew preparation, EDA, contract, training, report
 src/make_corrupted_workbook.py Local one-cell corrupted copy for the failure demonstration
 src/integration_flow.py        V1 read-only re-check and --demo-fail negative test
 contracts/                     Approved policies v1 (1.0.0) and v2 (2.0.0), policy history
-tests/                         193 automated tests (synthetic data only)
+tests/                         215 automated tests (synthetic data only)
 docs/                          Requirements, architecture, decisions, approvals, V2 evidence
 data/raw/, outputs/, runs/     Local data, uploads, logs and run artifacts (Git-ignored)
 ```
