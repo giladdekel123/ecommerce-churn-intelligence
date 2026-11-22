@@ -54,7 +54,9 @@ def _utc() -> str:
 
 class LiveStatus:
     def __init__(self, run_dir: Path, run_id: str, *, not_applicable=()):
-        self.path = Path(run_dir) / STATUS_NAME
+        # Absolute on purpose: event-handler threads write this file while a crew runs in its own
+        # working directory (src/crew_support.py), so a relative path would point to the wrong place.
+        self.path = Path(run_dir).resolve() / STATUS_NAME
         if self.path.exists():
             raise FileExistsError(f"Refusing to overwrite live status: {self.path}")
         self._lock = threading.RLock()

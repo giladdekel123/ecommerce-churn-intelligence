@@ -133,6 +133,7 @@ def run_agents(run_dir: Path, progress=None) -> dict:
 
     from crewai import Agent, Crew, LLM, Process, Task
     from crewai.tools import tool
+    from src.crew_support import crew_working_directory, output_token_limit_kwargs, record_token_usage
 
     # These three tools intentionally expose only aggregate data, never raw rows.
     log_path = run_dir / "agent_tool_calls.jsonl"
@@ -175,7 +176,8 @@ def run_agents(run_dir: Path, progress=None) -> dict:
     model_name = os.getenv("CREW1_GEMINI_MODEL", "gemini/gemini-2.5-flash")
     if not model_name.startswith("gemini/"):
         raise ValueError("CREW1_GEMINI_MODEL must be a Gemini model identifier")
-    llm = LLM(model=model_name, api_key=api_key, temperature=0.2, timeout=30, max_retries=0)
+    llm = LLM(model=model_name, api_key=api_key, temperature=0.2, timeout=30, max_retries=0,
+              **output_token_limit_kwargs())
 
     quality_agent = Agent(
         role=AGENT_ROLES[0],
@@ -206,7 +208,7 @@ def run_agents(run_dir: Path, progress=None) -> dict:
             "Separate observations from suggestions; no cleaning or training."
         ),
         expected_output="A concise Markdown review with verified figures, risks, and approval-needed decisions.",
-        agent=quality_agent, output_file=str(run_dir / "quality_review.md"),
+        agent=quality_agent, output_file="quality_review.md",
     )
     eda_task = Task(
         description=(
@@ -215,7 +217,7 @@ def run_agents(run_dir: Path, progress=None) -> dict:
             "Do not invent future time horizon, units, effects, statistics, or charts."
         ),
         expected_output="A concise Markdown interpretation citing numerical values and limitations.",
-        agent=eda_agent, output_file=str(run_dir / "eda_interpretation.md"),
+        agent=eda_agent, output_file="eda_interpretation.md",
     )
     business_task = Task(
         description=(
@@ -229,7 +231,7 @@ def run_agents(run_dir: Path, progress=None) -> dict:
         expected_output=("Markdown insights with evidence, caveats, next decisions, and a Crew 2 status "
                          "stated as pending the independent gate."),
         agent=business_agent, context=[quality_task, eda_task],
-        output_file=str(run_dir / "insights.md"),
+        output_file="insights.md",
     )
 
     crew = Crew(
@@ -242,7 +244,10 @@ def run_agents(run_dir: Path, progress=None) -> dict:
     from src.agent_progress import downgrade_without_evidence, track_crew_tasks
     with track_crew_tasks(progress, {quality_task: AGENT_ROLES[0], eda_task: AGENT_ROLES[1],
                                      business_task: AGENT_ROLES[2]}):
-        crew.kickoff()
+        # CrewAI strips a leading "/" from output_file, so tasks use bare names and run inside run_dir.
+        with crew_working_directory(run_dir):
+            result = crew.kickoff()
+    record_token_usage(result, run_dir, crew="crew1", model=model_name)
     recorded = Counter()
     if log_path.exists():
         for line in log_path.read_text(encoding="utf-8").splitlines():

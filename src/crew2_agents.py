@@ -72,6 +72,7 @@ def run_agents(run_dir: Path, progress=None) -> dict:
 
     from crewai import Agent, Crew, LLM, Process, Task
     from crewai.tools import tool
+    from src.crew_support import crew_working_directory, output_token_limit_kwargs, record_token_usage
 
     review_dir.mkdir(parents=True, exist_ok=False)
     log_path = review_dir / "agent_tool_calls.jsonl"
@@ -107,7 +108,8 @@ def run_agents(run_dir: Path, progress=None) -> dict:
             "winner", "test_rows", "test_churn_count", "holdout_once",
             "status", "limitations")})
 
-    llm = LLM(model=model_name, api_key=api_key, temperature=0.2, timeout=30, max_retries=0)
+    llm = LLM(model=model_name, api_key=api_key, temperature=0.2, timeout=30, max_retries=0,
+              **output_token_limit_kwargs())
     agent1 = Agent(
         role=ROLES[0],
         goal="Audit approved input features, preprocessing provenance and possible leakage risks.",
@@ -134,14 +136,14 @@ def run_agents(run_dir: Path, progress=None) -> dict:
                      "which were excluded, and why training-fitted preprocessing matters. Distinguish "
                      "documented policy from remaining risks. No new feature selection, training, or unverified unit claims."),
         expected_output="Concise Markdown review of features, governance, and temporal leakage caveats.",
-        agent=agent1, output_file=str(review_dir / REVIEW_FILES[0]),
+        agent=agent1, output_file=REVIEW_FILES[0],
     )
     t2 = Task(
         description=("Call your training CV tool before writing. Review baseline and two trained variations, "
                      "and the winner selected by train-only CV positive-class F1. Never choose a winner by test metrics, "
                      "invent scores or rerun training."),
         expected_output="Concise Markdown model engineering review with recorded F1 scores and limitations.",
-        agent=agent2, context=[t1], output_file=str(review_dir / REVIEW_FILES[1]),
+        agent=agent2, context=[t1], output_file=REVIEW_FILES[1],
     )
     t3 = Task(
         description=("Call your held-out evaluation tool before writing. Interpret accuracy versus minority-class "
@@ -149,13 +151,16 @@ def run_agents(run_dir: Path, progress=None) -> dict:
                      "and unknown future outcome horizon. Critically review previous two tasks. "
                      "Do NOT overwrite the deterministic evaluation_report.md or model_card.md."),
         expected_output="Concise critical Markdown held-out evaluation with measured figures and no deployment claim.",
-        agent=agent3, context=[t1, t2], output_file=str(review_dir / REVIEW_FILES[2]),
+        agent=agent3, context=[t1, t2], output_file=REVIEW_FILES[2],
     )
     crew = Crew(agents=[agent1, agent2, agent3], tasks=[t1, t2, t3],
                 process=Process.sequential, memory=False, verbose=True)
     from src.agent_progress import downgrade_without_evidence, track_crew_tasks
     with track_crew_tasks(progress, {t1: ROLES[0], t2: ROLES[1], t3: ROLES[2]}):
-        crew.kickoff()
+        # CrewAI strips a leading "/" from output_file, so tasks use bare names and run inside review_dir.
+        with crew_working_directory(review_dir):
+            result = crew.kickoff()
+    record_token_usage(result, review_dir, crew="crew2", model=model_name)
     count = Counter()
     if log_path.exists():
         for line in log_path.read_text(encoding="utf-8").splitlines():
