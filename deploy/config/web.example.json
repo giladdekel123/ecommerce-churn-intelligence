@@ -1,0 +1,4 @@
+{
+  "client_id": "REPLACE-WITH-YOUR-CLIENT-ID.apps.googleusercontent.com",
+  "redirect_uri": "https://REPLACE-MACHINE.REPLACE-TAILNET.ts.net:8443/oauth2callback"
+}

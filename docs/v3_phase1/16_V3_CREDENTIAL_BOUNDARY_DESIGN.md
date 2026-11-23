@@ -67,7 +67,7 @@ No file path, file name, command or environment value ever crosses it. The worke
 | Trust in the web process | A compromised web can claim any allow-listed identity | None for identity |
 | What an attacker gains from a compromised web | Can start only the two predefined scenarios, inside the quotas and budget; cannot read the key, logs or data | Same, but cannot forge identity either |
 | Cost | Smallest worker | The worker needs a JWT/JWKS library and outbound access to Google's key endpoint, which enlarges the process that holds the key |
-| **Recommendation** | **Use A for the owner-only phase** | Move to B before adding any other user or public access |
+| **Recommendation** | ~~Use A for the owner-only phase~~ (superseded) | **Implemented in Phase 2 (see file 18, section 7.3).** The worker verifies the raw ID token |
 
 ## 5. How the key reaches the pipeline without touching the web process
 1. systemd places the credential in a private, in-memory directory for the worker only (`LoadCredential=gemini_api_key:/etc/live/credentials/gemini_api_key`). systemd documents `LoadCredential=` as the secure route and `EnvironmentFile=` as unsuitable for secrets.

@@ -148,6 +148,16 @@ class LiveService:
             raise PermissionError("unknown run")
         return project_run(run_id, runs_root=self.config.runs_root, ledger_row=row)
 
+    def latest(self, claims) -> dict | None:
+        """The caller's most recent run (so a refreshed browser re-attaches instead of starting again)."""
+        decision = self._authorize(claims)
+        if not decision.allowed:
+            raise PermissionError("not authorized")
+        row = self.ledger.latest_for_sub(decision.sub)
+        if row is None:
+            return None
+        return {"run_id": row["run_id"], "scenario_id": row["scenario"], "limit_state": row["state"]}
+
     def usage(self, claims) -> dict:
         decision = self._authorize(claims)
         if not decision.allowed:

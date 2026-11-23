@@ -1,0 +1,76 @@
+# V3 live execution worker. PREPARED, NOT INSTALLED. Items marked (verify) must be checked on the VPS
+# with `systemd-analyze verify` and a dry run before use. See docs/v3_phase2/19_V3_DEPLOYMENT_RUNBOOK.md.
+[Unit]
+Description=V3 live execution worker (holds the Gemini key; serves a local Unix socket only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=live-worker
+Group=live-worker
+# live-ipc owns the socket group so that only the web account can connect.
+SupplementaryGroups=live-ipc
+WorkingDirectory=/opt/live/app
+# The ONLY place the Gemini key enters: systemd copies it to a private in-memory directory
+# ($CREDENTIALS_DIRECTORY) readable by this unit alone. EnvironmentFile= is deliberately not used.
+LoadCredential=gemini_api_key:/etc/live/credentials/gemini_api_key
+ExecStart=/opt/live/venv-worker/bin/python -m live.worker --config /etc/live/config.json --allowed-subs /etc/live/allowed_subs.json
+Restart=on-failure
+RestartSec=5
+# A restart or stop also stops the pipeline child (KillMode=control-group is the default); the supervisor
+# marks the interrupted run on the next start and keeps its reservation.
+KillMode=control-group
+TimeoutStopSec=20
+
+# Resource limits for a 1 vCPU / 3.8 GB host shared with n8n and Traefik.
+MemoryHigh=1200M
+MemoryMax=1536M
+MemorySwapMax=0
+CPUQuota=80%
+CPUWeight=50
+IOWeight=50
+TasksMax=128
+LimitNOFILE=2048
+# If memory runs out, the kernel should pick this unit before n8n.
+OOMScoreAdjust=500
+# Wall-clock ceiling for this unit's own lifetime is NOT set (it is long running); each pipeline run is
+# limited to run_timeout_s by the supervisor, and the cgroup limits above are the last line of defence.
+
+# Hardening
+NoNewPrivileges=yes
+# No Linux capabilities at all: the service accounts never need them (a socket may be re-grouped by its owner
+# to a group the owner belongs to).
+CapabilityBoundingSet=
+AmbientCapabilities=
+RemoveIPC=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectProc=invisible
+ProcSubset=pid
+UMask=0077
+# Writable: ledger, runs, uploads, logs, private HOME, and the socket directory.
+ReadWritePaths=/var/lib/live /run/live
+# The checkout is read-only for this unit; <checkout>/runs and <checkout>/outputs are symlinks into /var/lib/live.
+ReadOnlyPaths=/opt/live /srv/live /etc/live
+# Not reachable from this unit: the web unit's own secrets.
+InaccessiblePaths=/etc/live-web
+
+[Install]
+WantedBy=multi-user.target

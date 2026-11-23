@@ -219,6 +219,11 @@ class Ledger:
     def by_run_id(self, run_id: str) -> dict | None:
         return self._one("SELECT * FROM starts WHERE run_id=?", (run_id,))
 
+    def latest_for_sub(self, sub: str) -> dict | None:
+        """The caller's most recent request that got a run (lets a refreshed browser re-attach)."""
+        return self._one("SELECT * FROM starts WHERE sub=? AND run_id IS NOT NULL"
+                         " ORDER BY requested_at DESC, rowid DESC LIMIT 1", (sub,))
+
     def active_rows(self) -> list[dict]:
         conn = self._connect()
         try:
