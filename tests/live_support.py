@@ -1,5 +1,8 @@
 """Shared helpers for the V3 live-core tests. Offline: no Gemini, no network, no real pipeline unless a
 test explicitly uses the scripted-LLM harness."""
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+import env_hygiene  # noqa: F401  (sanitize the process before anything else is imported)
 import hashlib
 import itertools
 import sys
@@ -13,9 +16,17 @@ for path in (ROOT, ROOT / "tests"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+import base64  # noqa: E402
+import json  # noqa: E402
+
+from cryptography.hazmat.primitives import hashes  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric import padding, rsa  # noqa: E402
+
 from src import run_launcher  # noqa: E402
 from live.control import KillSwitch  # noqa: E402
+from live.ipc import WorkerClient, encode_response, handle_request  # noqa: E402
 from live.ledger import Ledger  # noqa: E402
+from live.oidc import JwksProvider, TokenVerifier  # noqa: E402
 from live.scenarios import Scenario, ScenarioRegistry  # noqa: E402
 from live.service import LiveConfig, LiveService  # noqa: E402
 from live.supervisor import Supervisor  # noqa: E402
@@ -24,6 +35,65 @@ CLIENT_ID = "test-client-id.apps.googleusercontent.com"
 OWNER = "100000000000000000001"
 OTHER = "100000000000000000002"
 NOW = 1_800_000_000.0   # a fixed instant: 2027-01-15 08:00:00 UTC
+
+
+# ---- offline stand-in for Google's signing keys: a throwaway RSA key made for the test process ------------------
+TEST_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)   # a different (attacker's) key
+TEST_KID = "test-key-1"
+
+
+def b64u(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def jwks_for(key, kid=TEST_KID) -> dict:
+    numbers = key.public_key().public_numbers()
+    size = (numbers.n.bit_length() + 7) // 8
+    return {"keys": [{"kty": "RSA", "alg": "RS256", "use": "sig", "kid": kid,
+                      "n": b64u(numbers.n.to_bytes(size, "big")), "e": b64u(numbers.e.to_bytes(3, "big"))}]}
+
+
+def sign_token(payload: dict, *, key=TEST_KEY, kid=TEST_KID, header=None) -> str:
+    head = {"alg": "RS256", "typ": "JWT", "kid": kid, **(header or {})}
+    signing = f"{b64u(json.dumps(head).encode())}.{b64u(json.dumps(payload).encode())}"
+    signature = key.sign(signing.encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
+    return f"{signing}.{b64u(signature)}"
+
+
+def make_verifier(now):
+    return TokenVerifier(JwksProvider(lambda: jwks_for(TEST_KEY), now=now), audience=CLIENT_ID, now=now)
+
+
+def transport_for(service, verifier=None):
+    """In-process transport: exactly the bytes the socket would carry, through the real dispatcher and verifier."""
+    verifier = verifier or make_verifier(service._now)
+
+    def transport(message):
+        return json.loads(encode_response(handle_request(service, json.dumps(message).encode(), verifier)))
+    return transport
+
+
+class ClaimsClient:
+    """Test convenience: takes a claims dict, signs it into a genuine RS256 token, and calls the worker with it."""
+
+    def __init__(self, transport):
+        self.raw = WorkerClient(transport)
+
+    def ping(self):
+        return self.raw.ping()
+
+    def start(self, claims, scenario_id, request_token):
+        return self.raw.start(sign_token(claims), scenario_id, request_token)
+
+    def status(self, claims, run_id):
+        return self.raw.status(sign_token(claims), run_id)
+
+    def latest(self, claims):
+        return self.raw.latest(sign_token(claims))
+
+    def usage(self, claims):
+        return self.raw.usage(sign_token(claims))
 
 
 class Clock:
@@ -84,6 +154,7 @@ class Fixture:
             test.addCleanup(patcher.stop)
         self.ledger = Ledger(self.base / "ledger.sqlite", now=self.clock)
         self.kill = KillSwitch(self.base / "KILL")
+        self.verifier = make_verifier(self.clock)
         self.states = {}                      # run_id -> state returned by the fake run_state
         self.default_state = classify_state
         self.alive = set()                    # pids the fake liveness check reports as alive

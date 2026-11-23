@@ -1,0 +1,14 @@
+{
+  "client_id": "REPLACE-WITH-YOUR-CLIENT-ID.apps.googleusercontent.com",
+  "state_dir": "/var/lib/live",
+  "scenarios_dir": "/srv/live/scenarios",
+  "socket_path": "/run/live/worker.sock",
+  "kill_switch_path": "/etc/live/KILL",
+  "web_user": "live-web",
+  "socket_group": "live-ipc",
+  "daily_start_limit": 2,
+  "monthly_budget_usd": 5.0,
+  "reserve_per_start_usd": 0.5,
+  "run_timeout_s": 300,
+  "max_session_age_s": 43200
+}

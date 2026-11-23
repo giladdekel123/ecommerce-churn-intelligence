@@ -255,8 +255,12 @@ class StatusAccessTests(unittest.TestCase):
 class StaticSafetyTests(unittest.TestCase):
     """The live core must not be able to call Gemini, open sockets, read secrets or take uploads."""
 
+    # Phase 2 modules have a different, deliberate role (socket, credential, browser page) and are held to their own
+    # stricter rules in test_live_worker.py and test_live_app.py. Everything else is the Phase 1 core.
+    PHASE2 = {"ipc.py", "worker.py", "web_client.py", "live_app.py", "oidc.py"}
+
     def sources(self):
-        return {p.name: p.read_text(encoding="utf-8") for p in LIVE.glob("*.py")}
+        return {p.name: p.read_text(encoding="utf-8") for p in LIVE.glob("*.py") if p.name not in self.PHASE2}
 
     def test_forbidden_imports_and_calls(self):
         banned_imports = {"socket", "requests", "urllib", "http", "httpx", "google", "genai", "crewai", "litellm",

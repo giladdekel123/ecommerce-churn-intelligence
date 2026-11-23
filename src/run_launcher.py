@@ -217,8 +217,12 @@ def _write_lock(path: Path, info: dict) -> None:
     temp.replace(path)
 
 
-def launch(upload: dict, *, runs_root: Path | None = None, python: str | None = None) -> dict:
-    """Start one V2 run for a staged upload. Raises AlreadyRunning if one is active."""
+def launch(upload: dict, *, runs_root: Path | None = None, python: str | None = None, env: dict | None = None) -> dict:
+    """Start one V2 run for a staged upload. Raises AlreadyRunning if one is active.
+
+    env=None keeps the historical behaviour (the child inherits this process's environment). A given
+    env is the child's COMPLETE environment: nothing is inherited (V3 credential boundary).
+    """
     from src.full_pipeline import _new_id
 
     source = Path(upload.get("path", "")).resolve()
@@ -245,7 +249,8 @@ def launch(upload: dict, *, runs_root: Path | None = None, python: str | None = 
         stream.write(json.dumps(info))
     argv = [python or sys.executable, str(PIPELINE), "--run", "--upload", str(source),
             "--expected-sha256", upload["sha256"], "--run-id", run_id]
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    env = ({**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"} if env is None
+           else {str(k): str(v) for k, v in env.items()})
     flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     try:
         with log_file.open("wb") as log:

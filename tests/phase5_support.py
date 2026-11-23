@@ -2,6 +2,9 @@
 
 Nothing here starts a real pipeline, calls Gemini, or touches the real runs/ folder.
 """
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+import env_hygiene  # noqa: F401  (sanitize the process before anything else is imported)
 import json
 import sys
 import tempfile

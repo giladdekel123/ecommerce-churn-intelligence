@@ -6,7 +6,7 @@
 - the original workbook passed the independent gate and completed Crew 2;
 - a corrupted workbook was rejected by the gate (`CSV-007`, `SatisfactionScore = 9`) with Crew 2 blocked.
 
-215 automated tests pass (177 application + 38 public-demo). Generated agent reports require human review. **Not deployed.** A read-only **public demo** is hosted on Streamlit Community Cloud: [Launch Interactive Demo](https://gilad-churn-intelligence.streamlit.app).
+481 automated tests pass on the `feature/v3-protected-live-app` branch (Windows: 465 passed, 16 POSIX-only skipped; Linux: 481 passed as root, 474 passed and 7 root-only skipped as an ordinary user). Generated agent reports require human review. **Not deployed.** The protected live-execution application (`live/`, `deploy/`) is **prepared and tested offline only**: see [`docs/v3_phase2/`](docs/v3_phase2/18_V3_PHASE2_PROTECTED_LIVE_APP.md); it has not been published or deployed. A read-only **public demo** is hosted on Streamlit Community Cloud: [Launch Interactive Demo](https://gilad-churn-intelligence.streamlit.app).
 **Submission deadline:** **17 November 2026** (extended from 10 November).
 **Repository:** https://github.com/giladdekel123/ecommerce-churn-intelligence
 
